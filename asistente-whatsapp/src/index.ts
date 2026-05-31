@@ -1,17 +1,46 @@
 import "dotenv/config";
+import path from "node:path";
 import express from "express";
 import { responder, resetSession } from "./claude.js";
-import { asegurarHeadersPedidos } from "./sheets.js";
+import { MODO_DEMO, asegurarHeadersPedidos, getPedidosDemo } from "./sheets.js";
 import { enviarMensaje, extraerMensajes, marcarLeido } from "./whatsapp.js";
 
 const app = express();
 app.use(express.json());
+app.use(express.static(path.resolve("public")));
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "verify-token";
 const PORT = Number(process.env.PORT || 3000);
 
 app.get("/", (_req, res) => {
-  res.send("Kukipet WhatsApp bot OK");
+  res.redirect("/chat.html");
+});
+
+app.get("/api/status", (_req, res) => {
+  res.json({
+    demo: MODO_DEMO,
+    anthropic: !!process.env.ANTHROPIC_API_KEY,
+    whatsapp: !!process.env.WHATSAPP_ACCESS_TOKEN,
+  });
+});
+
+app.get("/api/pedidos-demo", (_req, res) => {
+  res.json(getPedidosDemo());
+});
+
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { sessionId, text } = req.body || {};
+    if (!sessionId || !text) return res.status(400).json({ error: "sessionId y text requeridos" });
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: "Falta ANTHROPIC_API_KEY en .env" });
+    }
+    const reply = await responder(`web:${sessionId}`, String(text));
+    res.json({ reply });
+  } catch (e: any) {
+    console.error("[/api/chat]", e);
+    res.status(500).json({ error: e?.message || String(e) });
+  }
 });
 
 app.get("/webhook", (req, res) => {

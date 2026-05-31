@@ -1,10 +1,35 @@
+import fs from "node:fs";
 import { google, sheets_v4 } from "googleapis";
 import type { PedidoConfirmado, Producto } from "./types.js";
 
-const SHEET_ID = process.env.GOOGLE_SHEET_ID!;
+const SHEET_ID = process.env.GOOGLE_SHEET_ID || "";
 const SHEET_PRECIOS = process.env.SHEET_PRECIOS || "Precios";
 const SHEET_PEDIDOS = process.env.SHEET_PEDIDOS || "Pedidos";
 const CACHE_TTL_MS = Number(process.env.PRECIOS_CACHE_TTL || 300) * 1000;
+const CREDS_PATH = process.env.GOOGLE_APPLICATION_CREDENTIALS || "";
+
+export const MODO_DEMO =
+  !SHEET_ID || !CREDS_PATH || !fs.existsSync(CREDS_PATH);
+
+const CATALOGO_DEMO: Producto[] = [
+  { categoria: "Horneados", codigo: "ga001", nombre: "Doglletas", unidad: "u", precio: 2500, raw: {} },
+  { categoria: "Horneados", codigo: "pz001", nombre: "Petzza", unidad: "u", precio: 3800, raw: {} },
+  { categoria: "Horneados", codigo: "pz002", nombre: "MiniPetzza", unidad: "u", precio: 2200, raw: {} },
+  { categoria: "Congelados", codigo: "pe001", nombre: "Petlados pollo", unidad: "u", precio: 1800, raw: {} },
+  { categoria: "Congelados", codigo: "pe002", nombre: "Petlados patitas", unidad: "u", precio: 1800, raw: {} },
+  { categoria: "Congelados", codigo: "pe003", nombre: "Petlados higado", unidad: "u", precio: 1800, raw: {} },
+  { categoria: "Congelados", codigo: "gu001", nombre: "Gomipet", unidad: "u", precio: 1500, raw: {} },
+  { categoria: "Horneados", codigo: "to001", nombre: "Torta Cumple 17x17", unidad: "u", precio: 9500, raw: {} },
+  { categoria: "Horneados", codigo: "to002", nombre: "Torta Cumple 30x30", unidad: "u", precio: 18000, raw: {} },
+  { categoria: "Horneados", codigo: "to003", nombre: "Torta mini", unidad: "u", precio: 4500, raw: {} },
+  { categoria: "Combos", codigo: "c001", nombre: "Cumplelamidos", unidad: "u", precio: 7500, raw: {} },
+  { categoria: "Combos", codigo: "c002", nombre: "Bokado Real", unidad: "u", precio: 6800, raw: {} },
+  { categoria: "Combos", codigo: "c003", nombre: "Kukifest", unidad: "u", precio: 12000, raw: {} },
+  { categoria: "Combos", codigo: "c004", nombre: "Antojo perruno", unidad: "u", precio: 5500, raw: {} },
+];
+
+const pedidosDemo: any[] = [];
+export function getPedidosDemo() { return pedidosDemo; }
 
 let sheetsClient: sheets_v4.Sheets | null = null;
 
@@ -38,6 +63,7 @@ function norm(s: string): string {
 }
 
 export async function getProductos(force = false): Promise<Producto[]> {
+  if (MODO_DEMO) return CATALOGO_DEMO;
   if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) {
     return cache.data;
   }
@@ -108,9 +134,16 @@ export function buscarProducto(productos: Producto[], texto: string): Producto[]
 }
 
 export async function registrarPedido(pedido: PedidoConfirmado): Promise<string> {
-  const sheets = getSheets();
   const fecha = new Date().toISOString();
   const orderId = `KP-${Date.now()}`;
+
+  if (MODO_DEMO) {
+    pedidosDemo.push({ orderId, fecha, ...pedido });
+    console.log("[DEMO] Pedido registrado:", orderId, pedido);
+    return orderId;
+  }
+
+  const sheets = getSheets();
 
   const detalle = pedido.items
     .map((i) => `${i.cantidad}x ${i.codigo} ${i.nombre} ($${i.subtotal.toFixed(2)})`)
@@ -140,6 +173,7 @@ export async function registrarPedido(pedido: PedidoConfirmado): Promise<string>
 }
 
 export async function asegurarHeadersPedidos(): Promise<void> {
+  if (MODO_DEMO) return;
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,

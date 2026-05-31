@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kukipet · Chat de prueba</title>
+<style>
+  *{box-sizing:border-box;font-family:-apple-system,Segoe UI,Roboto,sans-serif}
+  body{margin:0;background:#ECE5DD;height:100vh;display:flex;flex-direction:column}
+  header{background:#075E54;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px}
+  header .avatar{width:38px;height:38px;border-radius:50%;background:#25D366;display:grid;place-items:center;font-weight:bold}
+  header .meta{flex:1}
+  header .name{font-weight:600}
+  header .sub{font-size:12px;opacity:.85}
+  header .badge{font-size:11px;background:#128C7E;padding:3px 8px;border-radius:10px}
+  #log{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px}
+  .msg{max-width:78%;padding:8px 12px;border-radius:8px;white-space:pre-wrap;word-wrap:break-word;font-size:14px;line-height:1.4;box-shadow:0 1px 0 rgba(0,0,0,.06)}
+  .me{align-self:flex-end;background:#DCF8C6}
+  .bot{align-self:flex-start;background:#fff}
+  .sys{align-self:center;background:#FFF3CD;font-size:12px;color:#856404;border-radius:12px;padding:4px 10px}
+  form{display:flex;gap:8px;padding:10px;background:#F0F0F0}
+  input{flex:1;padding:10px 14px;border:none;border-radius:20px;font-size:14px;outline:none}
+  button{padding:10px 18px;border:none;border-radius:20px;background:#25D366;color:#fff;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:wait}
+  .dots{display:inline-flex;gap:3px}
+  .dots span{width:6px;height:6px;background:#888;border-radius:50%;animation:b 1.2s infinite}
+  .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+  @keyframes b{0%,80%,100%{opacity:.3}40%{opacity:1}}
+</style>
+</head>
+<body>
+<header>
+  <div class="avatar">🐶</div>
+  <div class="meta">
+    <div class="name">Kuki · Kukipet</div>
+    <div class="sub">Asistente virtual de ventas</div>
+  </div>
+  <div class="badge" id="badge">conectando...</div>
+</header>
+<div id="log"></div>
+<form id="f">
+  <input id="i" placeholder="Escribí un mensaje..." autocomplete="off" autofocus>
+  <button id="b">Enviar</button>
+</form>
+<script>
+const log = document.getElementById('log');
+const form = document.getElementById('f');
+const input = document.getElementById('i');
+const btn = document.getElementById('b');
+const badge = document.getElementById('badge');
+const sessionId = 'web-' + Math.random().toString(36).slice(2, 10);
+
+function add(role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+fetch('/api/status').then(r => r.json()).then(s => {
+  badge.textContent = s.demo ? 'modo demo' : 'sheets ON';
+  badge.style.background = s.demo ? '#F39C12' : '#128C7E';
+  if (s.demo) add('sys', 'Modo demo: catálogo en memoria, pedidos NO se guardan en Sheets.');
+  if (!s.anthropic) add('sys', '⚠ Falta ANTHROPIC_API_KEY en .env — el bot no podrá responder.');
+});
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+  add('me', text);
+  input.value = '';
+  btn.disabled = true;
+  const typing = add('bot', '');
+  typing.innerHTML = '<span class="dots"><span></span><span></span><span></span></span>';
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sessionId, text})
+    });
+    const data = await r.json();
+    typing.textContent = data.reply || data.error || '(sin respuesta)';
+  } catch (err) {
+    typing.textContent = '⚠ Error: ' + err.message;
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+});
+</script>
+</body>
+</html>
